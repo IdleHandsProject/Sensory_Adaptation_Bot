@@ -1,14 +1,14 @@
 /*I refer to this program as "sensory adaptation" meant for the Sensory Adaptation Robot I built.
-   The purpose of this program is to demonstrate the ability to acquire new sensor use not specifically programmed into the Robot.
-   The Robot will run a course using the Sharp IR sensors. It will drive in the direction that has the furthest to drive until it has reached a certain distance away from the stop.
-   At the same time as determining this distance it will also be recording data from the Ping Sonar Distance sensors and which direction it decided to go. This data does not mean anything at this time.
-   The data will be used to train a neural network. Once 6 directions have been done in the course, it will then train the network with its new data. At this time the robot should be placed at the beginning of the course.
-   However this is not necessary, it will work anywhere. You can also demonstate that the IR sensors are not longer working by removing their power with the jumper.
-   It has successfully demonstated that the neural network allows new sensors to be adapted for use in place of other sensors.
-
-   Program pieced together by other programs by Sean Hodgins
-   This is under Creative Commons Share Alike 3.0 - Open Source.
-*/
+ * The purpose of this program is to demonstrate the ability to acquire new sensor use not specifically programmed into the Robot. 
+ * The Robot will run a course using the Sharp IR sensors. It will drive in the direction that has the furthest to drive until it has reached a certain distance away from the stop.
+ * At the same time as determining this distance it will also be recording data from the Ping Sonar Distance sensors and which direction it decided to go. This data does not mean anything at this time. 
+ * The data will be used to train a neural network. Once 6 directions have been done in the course, it will then train the network with its new data. At this time the robot should be placed at the beginning of the course. 
+ * However this is not necessary, it will work anywhere. You can also demonstate that the IR sensors are not longer working by removing their power with the jumper. 
+ * It has successfully demonstated that the neural network allows new sensors to be adapted for use in place of other sensors. 
+ * 
+ * Program pieced together by other programs by Sean Hodgins
+ * This is under Creative Commons Share Alike 3.0 - Open Source. 
+ */
 
 #include <math.h>
 ////////LEDs
@@ -55,27 +55,33 @@ long lastencoderValueB = 0;
 //int lastLSBA = 0;
 
 /////////NEURAL NET CONFIG
-const int PatternCount = 4;
+const int PatternCount = 5;
 const int InputNodes = 3;
-const int HiddenNodes = 4;
-const int OutputNodes = 3;
+const int HiddenNodes = 8;
+const int OutputNodes = 2;
 const float LearningRate = 0.3;
 const float Momentum = 0.9;
 const float InitialWeightMax = 0.5;
 const float Success = 0.0004;
 
 float Input[PatternCount][InputNodes] = {
-  { 1, 0, 0 },  // 0 RIGHT
+ 
+ { 1, 0, 0 },  // 0 RIGHT
   { 0, 1, 0 },  // 1 STRAIGHT
   { 0, 0, 1 },  // 2 LEFT
-  { 0, 0, 0 },  // 3 BACK
+  { 0.2, 0.2, 0.2 },  // 3 BACK
+  { 0, 0, 0 }
+
 };
 
-const byte Target[PatternCount][OutputNodes] = {
-  { 1, 0, 0 },
-  { 0, 1, 0 },
-  { 0, 0, 1 },
-  { 0, 0, 0 },
+const float Target[PatternCount][OutputNodes] = {
+  { 0, 1 },
+  { 1, 1 },
+  { 1, 0 },
+  { 0.2, 0.2 },
+  { 0, 0 },
+
+
 };
 
 int i, j, p, q, r;
@@ -98,7 +104,8 @@ float ChangeOutputWeights[HiddenNodes + 1][OutputNodes];
 
 /////////////////////////
 
-int BUT_REDstate = 0;
+int motorAspeed = 0;
+int motorBspeed = 0;
 
 void setup() {
 
@@ -144,9 +151,9 @@ void setup() {
   SerialUSB.begin(115200);
   Serial1.begin(115200); //Bluetooth Serial
   Serial1.println("Enter a character to start!");
-  BUT_REDstate = digitalRead(BUT_RED);
-  while (Serial1.available() == 0 && SerialUSB.available() == 0 && BUT_REDstate == HIGH) {
-    BUT_REDstate = digitalRead(BUT_RED); //Wait for input from either Serial
+  int BUT_REDstate = digitalRead(BUT_RED);
+  while (Serial1.available() == 0 && SerialUSB.available() == 0 && BUT_REDstate == HIGH){
+   BUT_REDstate = digitalRead(BUT_RED); //Wait for input from either Serial
   }
   Serial1.read();
   while (BUT_REDstate == LOW) {
@@ -154,16 +161,16 @@ void setup() {
     delay(50);
   }
   /*int BUT_REDstate = digitalRead(BUT_RED);
-    while (BUT_REDstate == HIGH) {
+  while (BUT_REDstate == HIGH) {
     BUT_REDstate = digitalRead(BUT_RED);
     delay(50);
-    }
-    SerialUSB.println("Button Pressed");
-    while (BUT_REDstate == LOW) {
+  }
+  SerialUSB.println("Button Pressed");
+  while (BUT_REDstate == LOW) {
     BUT_REDstate = digitalRead(BUT_RED);
     delay(50);
-    }
-    SerialUSB.println("Button Released");
+  }
+  SerialUSB.println("Button Released");
   */
   motorA(10, 1);
   motorB(10, 1);
@@ -173,132 +180,69 @@ void setup() {
   delay(2000);
 
   /*ChangeDir(0);
-    delay(1000);
-    ChangeDir(1);
-    delay(1000);
-    ChangeDir(2);
-    delay(1000);
-    ChangeDir(3);
-    while(1);
+  delay(1000);
+  ChangeDir(1);
+  delay(1000);
+  ChangeDir(2);
+  delay(1000);
+  ChangeDir(3);
+  while(1);
   */
 
 }
 
 void loop() {
-
-  int Trial = 0;
-  while (Error < Success) { ////AFTER NETWORK TRAINED CONTINUE TO RUN BASED ON TRAINED NETWORK
-
-    int TempInt;
-    float TestInput[] = {0, 0, 0};
-    int ping1 = PING(ECHO1, TRIG1);
-    delay(10);
-    int ping2 = PING(ECHO2, TRIG2);
-    delay(10);
-    int ping3 = PING(ECHO3, TRIG3);
-
-    TempInt = map(ping1, 5, 62, 0, 100000);
-    TestInput[0] = TempInt / 100000.000000;
-    TempInt = map(ping2, 5, 62, 0, 100000);
-    TestInput[1] = TempInt / 100000.000000;
-    TempInt = map(ping3, 5, 62, 0, 100000);
-    TestInput[2] = TempInt / 100000.000000;
-
-    Serial1.println("Testing NN: ");
-    int dir = InputToOutput(TestInput[0], TestInput[1], TestInput[2]);
-    ChangeDir(dir);
-    delay(2000);
-    DriveStraightStop();
-    delay(1000);
-    Trial++;
-    if (Trial > 5) {
-      digitalWrite(LEDRED, HIGH);
-      Serial1.println("Send another char to test network again");
-      while (Serial1.available() == 0 && BUT_REDstate == HIGH) {
-        BUT_REDstate = digitalRead(BUT_RED); //Wait for input from either Serial
-      }
-      Serial1.read();
-      while (BUT_REDstate == LOW) {
-        BUT_REDstate = digitalRead(BUT_RED);
-        delay(50);
-      }
-      digitalWrite(LEDRED, LOW);
-      Trial = 0;
-      motorA(10, 1);
-  motorB(10, 1);
-  delay(50);
-  motorA(0, 0);
-  motorB(0, 0);
-  delay(2000);
-    }
-
-  }
-  /*int ping1 = PING(ECHO1, TRIG1);
-    int ping2 = PING(ECHO2, TRIG2);
-    int ping3 = PING(ECHO3, TRIG3);
-    SerialUSB.print("Ping1: ");
-    SerialUSB.print(ping1);
-    SerialUSB.print(", Ping2: ");
-    SerialUSB.print(ping2);
-    SerialUSB.print(", Ping3: ");
-    SerialUSB.println(ping3);
-    float ReadIR1 = analogRead(IR1);
-    float ReadIR2 = analogRead(IR2);
-    float ReadIR3 = analogRead(IR3);
-    SerialUSB.print("IR1: ");
-    SerialUSB.print(ReadIR1);
-    SerialUSB.print(", IR2: ");
-    SerialUSB.print(ReadIR2);
-    SerialUSB.print(", IR3: ");
-    SerialUSB.println(ReadIR3);
-    delay(1000);*/
-  Serial1.println("Original Training Data:");
-  for (int x = 0; x < 4; x++) {
-    for (int y = 0; y < 3; y++) {
-      Serial1.print(Input[x][y]);
-      Serial1.print(",");
-    }
-    Serial1.println();
-  }
-  for (int Move = 0; Move < 6; Move++) {
-    int dir = CheckDirTrainAdd();
-    ChangeDir(dir);
-    delay(1000);
-    DriveStraightStop();
-  }
-
-  Serial1.println("New Training Data:");
-  for (int x = 0; x < 4; x++) {
-    for (int y = 0; y < 3; y++) {
-      Serial1.print(Input[x][y]);
-      Serial1.print(",");
-    }
-    Serial1.println();
-  }
-  Serial1.println("Finished.");
+  
   Serial1.println("Training Network.");
   delay(1000);
-  while (TrainANN() == 0);
+  while(TrainANN()==0);
+  
+  int Trial = 0;
+  while(Error < Success){  ////AFTER NETWORK TRAINED CONTINUE TO RUN BASED ON TRAINED NETWORK
+    
+    int TempInt;
+    float TestInput[] = {0,0,0};
+    //int ping1 = PING(ECHO1, TRIG1);
+    //delay(5);
+    //int ping2 = PING(ECHO2, TRIG2);
+    //delay(5);
+    //int ping3 = PING(ECHO3, TRIG3);
+    int ReadIR1 = avgIR(IR1);
+    int ReadIR2 = avgIR(IR2);
+    int ReadIR3 = avgIR(IR3);
+    TempInt = map(ReadIR1, 960, 200, 0, 100000);
+    TestInput[0] = TempInt / 100000.000000;
+    TempInt = map(ReadIR2, 960, 200, 0, 100000);
+    TestInput[1] = TempInt / 100000.000000;
+    TempInt = map(ReadIR3, 960, 200, 0, 100000);
+    TestInput[2] = TempInt / 100000.000000;
+    //TempInt = map(ping1, 5, 62, 0, 100000);
+    //TestInput[0] = TempInt / 100000.000000;
+    //TempInt = map(ping2, 5, 62, 0, 100000);
+    //TestInput[1] = TempInt / 100000.000000;
+    //TempInt = map(ping3, 5, 62, 0, 100000);
+    //TestInput[2] = TempInt / 100000.000000;
+    
+    //Serial1.println("Testing NN: ");
+    InputToOutputDrive(TestInput[0],TestInput[1],TestInput[2]);
+    if (motorAspeed>0){
+    motorA(motorAspeed, 1);
+    }
+    if (motorAspeed<=0){
+      motorA(2, 0);
+    }
+    if (motorBspeed>0){
+    motorB(motorBspeed, 1);
+    }
+    if (motorBspeed<=0){
+      motorB(2, 0);
+    }
+    Serial1.print("MotorA: ");
+    Serial1.print(motorAspeed);
+    Serial1.print("    MotorB: ");
+    Serial1.println(motorBspeed);
+  }
 
-  Serial1.println("Place robot in initial position, and send another Char to test neural network");
-  delay(500);
-  digitalWrite(LEDRED, HIGH);
-  delay(500);
-  while (Serial1.available() == 0  && BUT_REDstate == HIGH) {
-    BUT_REDstate = digitalRead(BUT_RED); //Wait for input from either Serial
-  }
-  Serial1.read();
-  while (BUT_REDstate == LOW) {
-    BUT_REDstate = digitalRead(BUT_RED);
-    delay(50);
-  }
-  digitalWrite(LEDRED, LOW);
-  motorA(10, 1);
-  motorB(10, 1);
-  delay(50);
-  motorA(0, 0);
-  motorB(0, 0);
-  delay(2000);
 }
 
 
@@ -329,7 +273,7 @@ void updateEncoderB() {
   lastEncodedB = encoded; //store this value for next time
 }
 
-int ChangeDir(int dir) {
+int ChangeDir(int dir){
   if (dir == 0) {
     TurnRightStop();
   }
@@ -434,7 +378,7 @@ int CheckDirTrainAdd() { //0 = RIGHT, 1 = STRAIGHT, 2 = LEFT 3 = BACK
 
 float avgIR(int IR) {
   float avg = 0;
-  float numavg = 100;
+  float numavg = 10;
   for (int x = 0; x < numavg; x++) {
     avg = analogRead(IR) + avg;
   }
@@ -455,7 +399,7 @@ int min3(int a, int b, int c)
 float max3(float a, float b, float c)
 {
   float maxguess;
-
+  
   maxguess = max(a, b);
   maxguess = max(maxguess, c);
   Serial1.print("Finding Max of: ");
@@ -489,14 +433,11 @@ void DriveStraightStop() {
     delay(5);
     int left = PING(ECHO3, TRIG3);
     delay(5);
-    distance = PING(ECHO2, TRIG2);
-    delay(10);
-    
-    if (encoderValueA > (encoderValueB)) {
+    if (encoderValueA > encoderValueB) {
       mRateA--;
       mRateB++;
     }
-    if ((encoderValueA) < encoderValueB) {
+    if (encoderValueA < encoderValueB) {
       mRateB--;
       mRateA++;
     }
@@ -504,12 +445,12 @@ void DriveStraightStop() {
     /*if (left > right) {
       mRateA--;
       mRateB++;
-      }
-      if (left < right) {
+    }
+    if (left < right) {
       mRateB--;
       mRateA++;
-      }*/
-
+    }*/
+    
     mA = mRateA / 10;
     mB = mRateB / 10;
     mA = constrain(mA, 0, 35);
@@ -521,7 +462,8 @@ void DriveStraightStop() {
     //SerialUSB.print(", ");
     //SerialUSB.println(encoderValueB);
     //delay(50);
-    
+    distance = PING(ECHO2, TRIG2);
+    delay(5);
   }
   motorA(0, 0);
   motorB(0, 0);
@@ -583,7 +525,7 @@ void TurnRightStop() {
     //SerialUSB.print(", ");
     //SerialUSB.println(encoderValueB);
   }
-
+  
   Serial1.print("Encoders: ");
   Serial1.print(encoderValueA);
   Serial1.print(", ");
@@ -907,53 +849,53 @@ void toTerminal()
 
 int InputToOutput(float In1, float In2, float In3)   //USED TO CHECK THE OUTPUT FROM A GIVEN INPUT
 {
-  float TestInput[] = {0, 0, 0};
-  TestInput[0] = In1;
-  TestInput[1] = In2;
-  TestInput[2] = In3;
-
-
-  Serial1.println();
-  Serial1.print (" Test Pattern: ");
-  Serial1.println ("Test");
-  Serial1.print ("  Input ");
-  for ( i = 0 ; i < InputNodes ; i++ ) {
-    Serial1.print (TestInput[i], DEC);
-    Serial1.print (" ");
-  }
-  //Serial1.print ("  Target ");
-  //for( i = 0 ; i < OutputNodes ; i++ ) {
-  //  Serial1.print (Target[p][i], DEC);
-  //  Serial1.print (" ");
-  //}
-  /******************************************************************
-    Compute hidden layer activations
-  ******************************************************************/
-
-  for ( i = 0 ; i < HiddenNodes ; i++ ) {
-    Accum = HiddenWeights[InputNodes][i] ;
-    for ( j = 0 ; j < InputNodes ; j++ ) {
-      Accum += TestInput[j] * HiddenWeights[j][i] ;
+    float TestInput[] = {0,0,0};
+    TestInput[0] = In1;
+    TestInput[1] = In2;
+    TestInput[2] = In3;
+    
+ 
+    Serial1.println(); 
+    Serial1.print (" Test Pattern: ");
+    Serial1.println ("Test");      
+    Serial1.print ("  Input ");
+    for( i = 0 ; i < InputNodes ; i++ ) {
+      Serial1.print (TestInput[i], DEC);
+      Serial1.print (" ");
     }
-    Hidden[i] = 1.0 / (1.0 + exp(-Accum)) ;
-  }
+    //Serial1.print ("  Target ");
+    //for( i = 0 ; i < OutputNodes ; i++ ) {
+    //  Serial1.print (Target[p][i], DEC);
+    //  Serial1.print (" ");
+    //}
+/******************************************************************
+* Compute hidden layer activations
+******************************************************************/
 
-  /******************************************************************
-    Compute output layer activations and calculate errors
-  ******************************************************************/
-
-  for ( i = 0 ; i < OutputNodes ; i++ ) {
-    Accum = OutputWeights[HiddenNodes][i] ;
-    for ( j = 0 ; j < HiddenNodes ; j++ ) {
-      Accum += Hidden[j] * OutputWeights[j][i] ;
+    for( i = 0 ; i < HiddenNodes ; i++ ) {    
+      Accum = HiddenWeights[InputNodes][i] ;
+      for( j = 0 ; j < InputNodes ; j++ ) {
+        Accum += TestInput[j] * HiddenWeights[j][i] ;
+      }
+      Hidden[i] = 1.0/(1.0 + exp(-Accum)) ;
     }
-    Output[i] = 1.0 / (1.0 + exp(-Accum)) ;
-  }
-  Serial1.print ("  Output ");
-  for ( i = 0 ; i < OutputNodes ; i++ ) {
-    Serial1.print (Output[i], 5);
-    Serial1.print (" ");
-  }
+
+/******************************************************************
+* Compute output layer activations and calculate errors
+******************************************************************/
+
+    for( i = 0 ; i < OutputNodes ; i++ ) {    
+      Accum = OutputWeights[HiddenNodes][i] ;
+      for( j = 0 ; j < HiddenNodes ; j++ ) {
+        Accum += Hidden[j] * OutputWeights[j][i] ;
+      }
+      Output[i] = 1.0/(1.0 + exp(-Accum)) ; 
+    }
+    Serial1.print ("  Output ");
+    for( i = 0 ; i < OutputNodes ; i++ ) {       
+      Serial1.print (Output[i], 5);
+      Serial1.print (" ");
+    }
   int dir = 0;
   float maximum = max3(Output[0], Output[1], Output[2]);
   Serial1.print("Max is: ");
@@ -977,3 +919,59 @@ int InputToOutput(float In1, float In2, float In3)   //USED TO CHECK THE OUTPUT 
   return dir;
 }
 
+
+void InputToOutputDrive(float In1, float In2, float In3)   //USED TO CHECK THE OUTPUT FROM A GIVEN INPUT
+{
+    float TestInput[] = {0,0,0};
+    TestInput[0] = In1;
+    TestInput[1] = In2;
+    TestInput[2] = In3;
+    
+ 
+    //Serial1.println(); 
+    //Serial1.print (" Test Pattern: ");
+    //Serial1.println ("Test");      
+    //Serial1.print ("  Input ");
+    for( i = 0 ; i < InputNodes ; i++ ) {
+      //Serial1.print (TestInput[i], DEC);
+      //Serial1.print (" ");
+    }
+    //Serial1.print ("  Target ");
+    //for( i = 0 ; i < OutputNodes ; i++ ) {
+    //  Serial1.print (Target[p][i], DEC);
+    //  Serial1.print (" ");
+    //}
+/******************************************************************
+* Compute hidden layer activations
+******************************************************************/
+
+    for( i = 0 ; i < HiddenNodes ; i++ ) {    
+      Accum = HiddenWeights[InputNodes][i] ;
+      for( j = 0 ; j < InputNodes ; j++ ) {
+        Accum += TestInput[j] * HiddenWeights[j][i] ;
+      }
+      Hidden[i] = 1.0/(1.0 + exp(-Accum)) ;
+    }
+
+/******************************************************************
+* Compute output layer activations and calculate errors
+******************************************************************/
+
+    for( i = 0 ; i < OutputNodes ; i++ ) {    
+      Accum = OutputWeights[HiddenNodes][i] ;
+      for( j = 0 ; j < HiddenNodes ; j++ ) {
+        Accum += Hidden[j] * OutputWeights[j][i] ;
+      }
+      Output[i] = 1.0/(1.0 + exp(-Accum)) ; 
+    }
+    Serial1.print ("  Output ");
+    for( i = 0 ; i < OutputNodes ; i++ ) {       
+     Serial1.print (Output[i], 5);
+     Serial1.print (" ");
+    }
+    Serial1.println();
+  motorAspeed = Output[1] * 100;
+  motorAspeed = motorAspeed / 10;
+  motorBspeed = Output[0] * 100;
+  motorBspeed = motorBspeed / 10;
+}

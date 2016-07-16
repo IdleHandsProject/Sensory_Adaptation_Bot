@@ -1113,13 +1113,11 @@ Text Label 1950 2950 0    60   ~ 0
 AENC1
 Text Label 1950 3250 0    60   ~ 0
 AENC2
-Text GLabel 7100 3850 0    60   Input ~ 0
-SWCLK
 Text GLabel 7100 3950 0    60   Input ~ 0
 SWDIO
 Text Label 7500 3950 0    60   ~ 0
 AIN1
-Text Label 7500 3850 0    60   ~ 0
+Text Label 1950 2650 0    60   ~ 0
 AIN2
 Text Label 1950 3150 0    60   ~ 0
 BIN1
@@ -1777,8 +1775,6 @@ Wire Wire Line
 	6000 3650 6300 3650
 Wire Wire Line
 	6000 3750 6300 3750
-Wire Wire Line
-	7100 3850 7500 3850
 Wire Wire Line
 	7100 3950 7500 3950
 Wire Wire Line
